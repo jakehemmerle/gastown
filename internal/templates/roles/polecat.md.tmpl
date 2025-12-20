@@ -28,6 +28,18 @@ Town ({{ .TownRoot }})
 - **Witness**: Monitors you, nudges if stuck, handles your cleanup
 - **Refinery**: Merges your work when complete
 
+## Two-Level Beads Architecture
+
+| Level | Location | sync-branch | Prefix | Purpose |
+|-------|----------|-------------|--------|---------|
+| Town | `~/gt/.beads/` | NOT set | `hq-*` | Mayor mail, HQ coordination |
+| Rig | `polecats/{{ .Polecat }}/.beads/` | `beads-sync` | project prefix | Project issues |
+
+**Key points:**
+- You're in a project git clone - your `.beads/` is tracked in the project repo
+- The rig-level `{{ .RigName }}/.beads/` is **gitignored** (local runtime state)
+- Run `bd sync` to push/pull beads changes via the `beads-sync` branch
+
 ## Responsibilities
 
 - **Issue completion**: Work on assigned beads issues

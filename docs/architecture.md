@@ -203,6 +203,46 @@ There is no separate orchestrator maintaining workflow state. Beads IS the orche
 | **Pinned beads** | Ongoing concerns that don't close | Planned (post-v1) |
 | **Resource beads** | Leases, locks, quotas | Planned (post-v1) |
 
+#### Two-Level Beads Architecture
+
+Gas Town uses a **two-level beads architecture**. This is critical to understand:
+
+```
+~/gt/                              # Town repo (stevey-gt.git)
+├── .beads/                        # TOWN-LEVEL: HQ beads (tracked here)
+│   ├── config.yaml                # NO sync-branch (single clone)
+│   └── issues.jsonl               # hq-* prefix for mayor mail
+│
+└── gastown/                       # Rig container (NOT a git clone)
+    ├── .beads/                    # GITIGNORED - local runtime state
+    │   └── (populated at runtime)
+    │
+    └── crew/max/                  # Project repo clone (gastown.git)
+        └── .beads/                # RIG-LEVEL: Project beads (tracked in gastown.git)
+            ├── config.yaml        # sync-branch: beads-sync
+            └── issues.jsonl       # gt-* prefix for project issues
+```
+
+**Key points:**
+
+| Level | Location | Git Repo | sync-branch | Prefix | Purpose |
+|-------|----------|----------|-------------|--------|---------|
+| Town | `~/gt/.beads/` | stevey-gt.git | NOT set | `hq-*` | Mayor mail, cross-rig coordination |
+| Rig | `~/gt/gastown/crew/max/.beads/` | gastown.git | `beads-sync` | `gt-*` | Project bugs, features, tasks |
+
+**Why two levels?**
+- **Town beads** are for the Gas Town installation itself (only one clone)
+- **Rig beads** are for the project (shared across multiple clones: crew, polecats, mayor/rig)
+
+**Why different sync-branch settings?**
+- **Town beads**: Single clone at HQ, no coordination needed, commits to main
+- **Rig beads**: Multiple clones (polecats, crew, refinery), need `beads-sync` branch to avoid conflicts with code commits
+
+**Common confusion:**
+- `~/gt/gastown/.beads/` at the rig container level is **gitignored** (local runtime state)
+- The real project beads live in the **gastown.git clones** (e.g., `crew/max/.beads/`)
+- All clones share the same beads via git sync on the `beads-sync` branch
+
 **Molecules** are crystallized workflow patterns that can be attached to work items. See the dedicated **Molecules** section below for full details on composition, nondeterministic idempotence, and built-in workflows.
 
 **The OS Metaphor**: Gas Town is an operating system for work:

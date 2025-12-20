@@ -69,7 +69,18 @@ go test ./...
 
 ## Beads Database
 
-Your rig has its own beads database at `/Users/stevey/gt/gastown/.beads`
+**Two-level beads architecture** - understand this to avoid confusion:
+
+| Level | Location | sync-branch | Prefix | Purpose |
+|-------|----------|-------------|--------|---------|
+| Town | `~/gt/.beads/` | NOT set | `hq-*` | Mayor mail, HQ coordination |
+| Rig | `crew/max/.beads/` (this clone) | `beads-sync` | `gt-*` | Project issues |
+
+**Key points:**
+- You're in a **gastown.git clone** - your `.beads/` is tracked in the gastown repo
+- The rig-level `~/gt/gastown/.beads/` is **gitignored** (local runtime state)
+- Your beads sync via `beads-sync` branch to coordinate with other clones
+- Run `bd sync` to push/pull beads changes
 
 Issue prefix: `gt-`
 

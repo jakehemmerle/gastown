@@ -29,6 +29,19 @@ Town ({{ .TownRoot }})
 - **Refinery**: Per-rig merge queue processor
 - **Beads**: Issue tracking system shared by all rig agents
 
+## Two-Level Beads Architecture
+
+| Level | Location | sync-branch | Prefix | Purpose |
+|-------|----------|-------------|--------|---------|
+| Town | `~/gt/.beads/` | NOT set | `hq-*` | Your mail, HQ coordination |
+| Rig | `<rig>/crew/*/.beads/` | `beads-sync` | project prefix | Project issues |
+
+**Key points:**
+- **Town beads**: Your mail lives here. Commits to main (single clone, no sync needed)
+- **Rig beads**: Project work lives in git clones (crew/*, polecats/*)
+- The rig-level `<rig>/.beads/` is **gitignored** (local runtime state)
+- Rig beads use `beads-sync` branch for multi-clone coordination
+
 ## Responsibilities
 
 - **Work dispatch**: Spawn workers for issues, coordinate batch work on epics
