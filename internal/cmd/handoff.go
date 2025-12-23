@@ -33,13 +33,17 @@ Any molecule on the hook will be auto-continued by the new session.`,
 }
 
 var (
-	handoffWatch  bool
-	handoffDryRun bool
+	handoffWatch   bool
+	handoffDryRun  bool
+	handoffSubject string
+	handoffMessage string
 )
 
 func init() {
 	handoffCmd.Flags().BoolVarP(&handoffWatch, "watch", "w", true, "Switch to new session (for remote handoff)")
 	handoffCmd.Flags().BoolVarP(&handoffDryRun, "dry-run", "n", false, "Show what would be done without executing")
+	handoffCmd.Flags().StringVarP(&handoffSubject, "subject", "s", "", "Subject for handoff mail (optional)")
+	handoffCmd.Flags().StringVarP(&handoffMessage, "message", "m", "", "Message body for handoff mail (optional)")
 	rootCmd.AddCommand(handoffCmd)
 }
 
@@ -81,6 +85,16 @@ func runHandoff(cmd *cobra.Command, args []string) error {
 	// If handing off a different session, we need to find its pane and respawn there
 	if targetSession != currentSession {
 		return handoffRemoteSession(t, targetSession, restartCmd)
+	}
+
+	// If subject/message provided, send handoff mail to self first
+	if handoffSubject != "" || handoffMessage != "" {
+		if err := sendHandoffMail(handoffSubject, handoffMessage); err != nil {
+			fmt.Printf("%s Warning: could not send handoff mail: %v\n", style.Dim.Render("⚠"), err)
+			// Continue anyway - the respawn is more important
+		} else {
+			fmt.Printf("%s Sent handoff mail\n", style.Bold.Render("📬"))
+		}
 	}
 
 	// Handing off ourselves - print feedback then respawn
@@ -238,4 +252,25 @@ func getSessionPane(sessionName string) (string, error) {
 		return "", fmt.Errorf("no panes found in session")
 	}
 	return lines[0], nil
+}
+
+// sendHandoffMail sends a handoff mail to self using gt mail send.
+func sendHandoffMail(subject, message string) error {
+	// Build subject with handoff prefix if not already present
+	if subject == "" {
+		subject = "🤝 HANDOFF: Session cycling"
+	} else if !strings.Contains(subject, "HANDOFF") {
+		subject = "🤝 HANDOFF: " + subject
+	}
+
+	// Default message if not provided
+	if message == "" {
+		message = "Context cycling. Check bd ready for pending work."
+	}
+
+	// Use gt mail send to self (--self flag sends to current agent identity)
+	cmd := exec.Command("gt", "mail", "send", "--self", "-s", subject, "-m", message)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

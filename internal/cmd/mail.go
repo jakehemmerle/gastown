@@ -25,6 +25,7 @@ var (
 	mailType          string
 	mailReplyTo       string
 	mailNotify        bool
+	mailSendSelf      bool
 	mailInboxJSON     bool
 	mailReadJSON      bool
 	mailInboxUnread   bool
@@ -109,8 +110,9 @@ Examples:
   gt mail send gastown/ -s "All hands" -m "Swarm starting" --notify
   gt mail send gastown/Toast -s "Task" -m "Fix bug" --type task --priority 1
   gt mail send gastown/Toast -s "Urgent" -m "Help!" --urgent
-  gt mail send mayor/ -s "Re: Status" -m "Done" --reply-to msg-abc123`,
-	Args: cobra.ExactArgs(1),
+  gt mail send mayor/ -s "Re: Status" -m "Done" --reply-to msg-abc123
+  gt mail send --self -s "Handoff" -m "Context for next session"`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runMailSend,
 }
 
@@ -233,6 +235,7 @@ func init() {
 	mailSendCmd.Flags().StringVar(&mailReplyTo, "reply-to", "", "Message ID this is replying to")
 	mailSendCmd.Flags().BoolVarP(&mailNotify, "notify", "n", false, "Send tmux notification to recipient")
 	mailSendCmd.Flags().BoolVar(&mailPinned, "pinned", false, "Pin message (for handoff context that persists)")
+	mailSendCmd.Flags().BoolVar(&mailSendSelf, "self", false, "Send to self (auto-detect from cwd)")
 	_ = mailSendCmd.MarkFlagRequired("subject")
 
 	// Inbox flags
@@ -273,7 +276,28 @@ func init() {
 }
 
 func runMailSend(cmd *cobra.Command, args []string) error {
-	to := args[0]
+	var to string
+
+	if mailSendSelf {
+		// Auto-detect identity from cwd
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getting current directory: %w", err)
+		}
+		townRoot, err := workspace.FindFromCwd()
+		if err != nil || townRoot == "" {
+			return fmt.Errorf("not in a Gas Town workspace")
+		}
+		ctx := detectRole(cwd, townRoot)
+		to = buildAgentIdentity(ctx)
+		if to == "" {
+			return fmt.Errorf("cannot determine identity from current directory (role: %s)", ctx.Role)
+		}
+	} else if len(args) > 0 {
+		to = args[0]
+	} else {
+		return fmt.Errorf("address required (or use --self)")
+	}
 
 	// All mail uses town beads (two-level architecture)
 	workDir, err := findMailWorkDir()
