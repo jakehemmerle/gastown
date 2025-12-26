@@ -401,6 +401,13 @@ func (g *Git) DeleteBranch(name string, force bool) error {
 	return err
 }
 
+// ResetBranch force-updates a branch to point to a ref.
+// This is useful for resetting stale polecat branches to main.
+func (g *Git) ResetBranch(name, ref string) error {
+	_, err := g.run("branch", "-f", name, ref)
+	return err
+}
+
 // Rev returns the commit hash for the given ref.
 func (g *Git) Rev(ref string) (string, error) {
 	return g.run("rev-parse", ref)

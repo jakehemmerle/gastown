@@ -304,6 +304,9 @@ func (m *Manager) Recreate(name string, force bool) (*Polecat, error) {
 	// Prune stale worktree entries
 	_ = repoGit.WorktreePrune()
 
+	// Fetch latest from origin to ensure we have fresh commits
+	_ = repoGit.Fetch("origin")
+
 	// Delete the old branch so worktree starts fresh from current HEAD
 	// Ignore error - branch may not exist (first recreate) or may fail to delete
 	_ = repoGit.DeleteBranch(branchName, true)
@@ -316,10 +319,13 @@ func (m *Manager) Recreate(name string, force bool) (*Polecat, error) {
 
 	// Create worktree - handle both cases like Add() does
 	if branchExists {
-		// Branch still exists, create worktree using existing branch
-		// This happens if delete failed (e.g., protected branch)
+		// Branch still exists after deletion attempt - force-reset to origin/main
+		// This ensures the polecat starts with fresh code, not stale commits
+		if err := repoGit.ResetBranch(branchName, "origin/main"); err != nil {
+			return nil, fmt.Errorf("resetting stale branch to origin/main: %w", err)
+		}
 		if err := repoGit.WorktreeAddExisting(polecatPath, branchName); err != nil {
-			return nil, fmt.Errorf("creating worktree with existing branch: %w", err)
+			return nil, fmt.Errorf("creating worktree with reset branch: %w", err)
 		}
 	} else {
 		// Branch was deleted, create fresh worktree with new branch from HEAD
