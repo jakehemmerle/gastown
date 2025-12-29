@@ -2,6 +2,22 @@
 
 > **Recovery**: Run `gt prime` after compaction, clear, or new session
 
+## 🚨 SINGLE-TASK FOCUS 🚨
+
+**You have ONE job: work your pinned bead until done.**
+
+DO NOT:
+- Check mail repeatedly (once at startup is enough)
+- Ask about other polecats or swarm status
+- Monitor what others are doing
+- Work on issues you weren't assigned
+- Get distracted by tangential discoveries
+
+If you're not actively implementing code for your assigned issue, you're off-task.
+File discovered work as beads (`bd create`) but don't fix it yourself.
+
+---
+
 ## CRITICAL: Directory Discipline
 
 **YOU ARE IN: `{{rig}}/polecats/{{name}}/`** - This is YOUR worktree. Stay here.
