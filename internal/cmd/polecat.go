@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/gastown/internal/beads"
 	"github.com/steveyegge/gastown/internal/git"
 	"github.com/steveyegge/gastown/internal/polecat"
 	"github.com/steveyegge/gastown/internal/rig"
@@ -22,12 +21,10 @@ import (
 
 // Polecat command flags
 var (
-	polecatListJSON   bool
-	polecatListAll    bool
-	polecatForce      bool
-	polecatRemoveAll  bool
-	polecatNukeAll    bool
-	polecatNukeDryRun bool
+	polecatListJSON  bool
+	polecatListAll   bool
+	polecatForce     bool
+	polecatRemoveAll bool
 )
 
 var polecatCmd = &cobra.Command{
@@ -201,6 +198,8 @@ var (
 	polecatStatusJSON   bool
 	polecatGitStateJSON bool
 	polecatGCDryRun     bool
+	polecatNukeAll      bool
+	polecatNukeDryRun   bool
 )
 
 var polecatGCCmd = &cobra.Command{
@@ -221,26 +220,6 @@ Examples:
   gt polecat gc gastown --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPolecatGC,
-}
-
-var polecatRecycleCmd = &cobra.Command{
-	Use:   "recycle <rig>/<polecat>",
-	Short: "Kill session but preserve sandbox for respawn",
-	Long: `Recycle a polecat session: kill the Claude session but preserve the sandbox.
-
-This command:
-  - Kills the tmux session (stopping the Claude agent)
-  - Preserves the worktree and branch (sandbox intact)
-  - Updates agent bead state to 'stopped'
-  - Leaves everything ready for respawn on next step
-
-Use this between molecule steps to give polecats fresh context.
-Use 'gt polecat nuke' for full cleanup after merge.
-
-Examples:
-  gt polecat recycle gastown/Toast`,
-	Args: cobra.ExactArgs(1),
-	RunE: runPolecatRecycle,
 }
 
 var polecatNukeCmd = &cobra.Command{
@@ -323,7 +302,6 @@ func init() {
 	polecatCmd.AddCommand(polecatStatusCmd)
 	polecatCmd.AddCommand(polecatGitStateCmd)
 	polecatCmd.AddCommand(polecatGCCmd)
-	polecatCmd.AddCommand(polecatRecycleCmd)
 	polecatCmd.AddCommand(polecatNukeCmd)
 
 	rootCmd.AddCommand(polecatCmd)
@@ -567,7 +545,7 @@ func runPolecatRemove(cmd *cobra.Command, args []string) error {
 
 	// Report results
 	if len(removeErrors) > 0 {
-		style.PrintWarning("Some removals failed:")
+		fmt.Printf("\n%s Some removals failed:\n", style.Warning.Render("Warning:"))
 		for _, e := range removeErrors {
 			fmt.Printf("  - %s\n", e)
 		}
@@ -760,7 +738,7 @@ func runPolecatSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(syncErrors) > 0 {
-		style.PrintWarning("Some syncs failed:")
+		fmt.Printf("\n%s Some syncs failed:\n", style.Warning.Render("Warning:"))
 		for _, e := range syncErrors {
 			fmt.Printf("  - %s\n", e)
 		}
@@ -1140,74 +1118,20 @@ func runPolecatGC(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runPolecatRecycle(cmd *cobra.Command, args []string) error {
-	rigName, polecatName, err := parseAddress(args[0])
-	if err != nil {
-		return err
-	}
-
-	mgr, r, err := getPolecatManager(rigName)
-	if err != nil {
-		return err
-	}
-
-	// Verify polecat exists
-	p, err := mgr.Get(polecatName)
-	if err != nil {
-		return fmt.Errorf("polecat '%s' not found in rig '%s'", polecatName, rigName)
-	}
-
-	fmt.Printf("Recycling polecat %s/%s...\n", rigName, polecatName)
-
-	// Check if session is running
-	t := tmux.NewTmux()
-	sessMgr := session.NewManager(t, r)
-	running, _ := sessMgr.IsRunning(polecatName)
-
-	if running {
-		// Kill the session (preserves sandbox)
-		fmt.Printf("  Stopping session...\n")
-		if err := sessMgr.Stop(polecatName, false); err != nil {
-			// Try force stop
-			if err := sessMgr.Stop(polecatName, true); err != nil {
-				return fmt.Errorf("stopping session: %w", err)
-			}
-		}
-		fmt.Printf("  %s Session stopped\n", style.Success.Render("✓"))
-	} else {
-		fmt.Printf("  %s Session not running\n", style.Dim.Render("○"))
-	}
-
-	// Update agent bead state to 'stopped'
-	// Agent bead ID format: <prefix>-polecat-<rig>-<name>
-	// We need to get the prefix from the rig's beads config
-	beadsDir := filepath.Join(r.Path, "mayor", "rig")
-	bd := beads.New(beadsDir)
-
-	// Find the agent bead by searching for type=agent matching this polecat
-	// Agent bead ID pattern: gt-polecat-<rig>-<name>
-	agentBeadID := fmt.Sprintf("gt-polecat-%s-%s", rigName, polecatName)
-
-	// Try to update agent state
-	fmt.Printf("  Updating agent state...\n")
-	if err := bd.UpdateAgentState(agentBeadID, "stopped", nil); err != nil {
-		// Non-fatal - agent bead might not exist yet
-		fmt.Printf("  %s Agent bead not found (ok for new polecats)\n", style.Dim.Render("○"))
-	} else {
-		fmt.Printf("  %s Agent state: stopped\n", style.Success.Render("✓"))
-	}
-
-	// Report sandbox preserved
-	fmt.Printf("  %s Sandbox preserved: %s\n", style.Success.Render("✓"), style.Dim.Render(p.ClonePath))
-	fmt.Printf("  %s Branch: %s\n", style.Success.Render("✓"), style.Dim.Render(p.Branch))
-
-	fmt.Printf("\n%s Polecat recycled. Ready for respawn.\n", style.SuccessPrefix)
-	return nil
-}
-
-// splitLines splits a string into lines.
+// splitLines splits a string into non-empty lines.
 func splitLines(s string) []string {
-	return strings.Split(s, "\n")
+	var lines []string
+	for _, line := range filepath.SplitList(s) {
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+	// filepath.SplitList doesn't work for newlines, use strings.Split instead
+	lines = nil
+	for _, line := range strings.Split(s, "\n") {
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func runPolecatNuke(cmd *cobra.Command, args []string) error {
@@ -1353,7 +1277,7 @@ func runPolecatNuke(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(nukeErrors) > 0 {
-		style.PrintWarning("Some nukes failed:")
+		fmt.Printf("\n%s Some nukes failed:\n", style.Warning.Render("Warning:"))
 		for _, e := range nukeErrors {
 			fmt.Printf("  - %s\n", e)
 		}
