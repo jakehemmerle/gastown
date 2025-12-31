@@ -11,12 +11,15 @@ import (
 	"github.com/steveyegge/gastown/internal/workspace"
 )
 
+var nudgeMessageFlag string
+
 func init() {
 	rootCmd.AddCommand(nudgeCmd)
+	nudgeCmd.Flags().StringVarP(&nudgeMessageFlag, "message", "m", "", "Message to send")
 }
 
 var nudgeCmd = &cobra.Command{
-	Use:     "nudge <target> <message>",
+	Use:     "nudge <target> [message]",
 	GroupID: GroupComm,
 	Short:   "Send a message to a polecat or deacon session reliably",
 	Long: `Sends a message to a polecat's or deacon's Claude Code session.
@@ -34,15 +37,24 @@ Special targets:
 
 Examples:
   gt nudge greenplace/furiosa "Check your mail and start working"
-  gt nudge greenplace/alpha "What's your status?"
+  gt nudge greenplace/alpha -m "What's your status?"
   gt nudge deacon session-started`,
-	Args: cobra.ExactArgs(2),
+	Args: cobra.RangeArgs(1, 2),
 	RunE: runNudge,
 }
 
 func runNudge(cmd *cobra.Command, args []string) error {
 	target := args[0]
-	message := args[1]
+
+	// Get message from -m flag or positional arg
+	var message string
+	if nudgeMessageFlag != "" {
+		message = nudgeMessageFlag
+	} else if len(args) >= 2 {
+		message = args[1]
+	} else {
+		return fmt.Errorf("message required: use -m flag or provide as second argument")
+	}
 
 	// Identify sender for message prefix
 	sender := "unknown"
