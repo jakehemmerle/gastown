@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/gastown/internal/beads"
+	"github.com/steveyegge/gastown/internal/config"
 	"github.com/steveyegge/gastown/internal/mail"
 	"github.com/steveyegge/gastown/internal/tmux"
 	"github.com/steveyegge/gastown/internal/workspace"
@@ -164,9 +165,20 @@ func runMayorStatusLine(t *tmux.Tmux) error {
 		townRoot, _ = workspace.Find(paneDir)
 	}
 
+	// Load registered rigs to validate against
+	registeredRigs := make(map[string]bool)
+	if townRoot != "" {
+		rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
+		if rigsConfig, err := config.LoadRigsConfig(rigsConfigPath); err == nil {
+			for rigName := range rigsConfig.Rigs {
+				registeredRigs[rigName] = true
+			}
+		}
+	}
+
 	// Count polecats and rigs
 	// Polecats: only actual polecats (not witnesses, refineries, deacon, crew)
-	// Rigs: any rig with active sessions (witness, refinery, crew, or polecat)
+	// Rigs: only registered rigs with active sessions
 	polecatCount := 0
 	rigs := make(map[string]bool)
 	for _, s := range sessions {
@@ -174,12 +186,12 @@ func runMayorStatusLine(t *tmux.Tmux) error {
 		if agent == nil {
 			continue
 		}
-		// Count rigs from any rig-level agent (has non-empty Rig field)
-		if agent.Rig != "" {
+		// Count rigs from any rig-level agent, but only if registered
+		if agent.Rig != "" && registeredRigs[agent.Rig] {
 			rigs[agent.Rig] = true
 		}
-		// Count only polecats for polecat count
-		if agent.Type == AgentPolecat {
+		// Count only polecats for polecat count (in registered rigs)
+		if agent.Type == AgentPolecat && registeredRigs[agent.Rig] {
 			polecatCount++
 		}
 	}
@@ -229,6 +241,17 @@ func runDeaconStatusLine(t *tmux.Tmux) error {
 		townRoot, _ = workspace.Find(paneDir)
 	}
 
+	// Load registered rigs to validate against
+	registeredRigs := make(map[string]bool)
+	if townRoot != "" {
+		rigsConfigPath := filepath.Join(townRoot, "mayor", "rigs.json")
+		if rigsConfig, err := config.LoadRigsConfig(rigsConfigPath); err == nil {
+			for rigName := range rigsConfig.Rigs {
+				registeredRigs[rigName] = true
+			}
+		}
+	}
+
 	rigs := make(map[string]bool)
 	polecatCount := 0
 	for _, s := range sessions {
@@ -236,10 +259,11 @@ func runDeaconStatusLine(t *tmux.Tmux) error {
 		if agent == nil {
 			continue
 		}
-		if agent.Rig != "" {
+		// Only count registered rigs
+		if agent.Rig != "" && registeredRigs[agent.Rig] {
 			rigs[agent.Rig] = true
 		}
-		if agent.Type == AgentPolecat {
+		if agent.Type == AgentPolecat && registeredRigs[agent.Rig] {
 			polecatCount++
 		}
 	}
