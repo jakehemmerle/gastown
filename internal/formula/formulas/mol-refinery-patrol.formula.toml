@@ -61,6 +61,7 @@ source of truth.
 | delete_merged_branches | true | Whether to delete source branches after merge |
 | judgment_enabled | false | Enable quality review for merges (true/false) |
 | review_depth | standard | Review depth: quick, standard, or deep |
+| merge_strategy | direct | Merge strategy: 'direct' (ff-only merge+push) or 'pr' (GitHub PR) |
 
 ## Target Resolution Rule
 
@@ -81,7 +82,7 @@ resolve that placeholder with this rule:
 You MUST process steps in strict DAG order. Walk through each step sequentially,
 unless you are explicitly told to skip to a step."""
 formula = "mol-refinery-patrol"
-version = 9
+version = 10
 
 [vars]
 [vars.wisp_type]
@@ -135,6 +136,10 @@ default = "false"
 [vars.review_depth]
 description = "Review depth: quick, standard, or deep"
 default = "standard"
+
+[vars.merge_strategy]
+description = "Merge strategy: 'direct' (ff-only merge + push) or 'pr' (create GitHub PR). Default: direct."
+default = "direct"
 
 [[steps]]
 id = "inbox-check"
@@ -517,16 +522,21 @@ Merge and push. CRITICAL: Notifications come IMMEDIATELY after push.
 **Config: integration_branch_refinery_enabled = {{integration_branch_refinery_enabled}}**
 **Config: target_branch = {{target_branch}}**
 **Config: delete_merged_branches = {{delete_merged_branches}}**
+**Config: merge_strategy = {{merge_strategy}}**
 
-**Step 1: Merge and Push**
+**Step 1: Merge (strategy-dependent)**
+
 Determine `<merge-target>` using the **Target Resolution Rule** above.
+
+**If merge_strategy = "direct" (default):**
+
 ```bash
 git checkout <merge-target>
 git merge --ff-only temp
 git push origin <merge-target>
 ```
 
-**Step 1.5: VERIFY PUSH SUCCEEDED (CRITICAL - PATCH-003)**
+**Step 1.5 (direct only): VERIFY PUSH SUCCEEDED (CRITICAL - PATCH-003)**
 
 Push can fail silently (network, auth, hooks). IMMEDIATELY verify:
 ```bash
@@ -546,17 +556,71 @@ echo "Remote: $REMOTE_SHA"
 - Debug the push failure (check `git push` output, network, auth)
 - Retry push and verify again before proceeding
 
+**If merge_strategy = "pr":**
+
+Push the rebased branch and create a GitHub PR instead of direct merge.
+
+```bash
+# Push the rebased polecat branch (force-push since we rebased)
+git checkout temp
+git push origin temp:refs/heads/<polecat-branch> --force-with-lease
+
+# Create the PR using bead metadata for title/description
+PR_URL=$(gh pr create \
+  --base <merge-target> \
+  --head <polecat-branch> \
+  --title "<issue-title> (<issue-id>)" \
+  --body "## Summary
+
+Automated merge from polecat branch.
+
+- **Issue**: <issue-id>
+- **Polecat**: <polecat-name>
+- **Branch**: <polecat-branch>
+- **Tests**: Passed (verified by refinery)
+
+---
+*Created by Gas Town Refinery*")
+echo "PR created: $PR_URL"
+```
+
+If the PR already exists for this branch, `gh pr create` will fail. In that case,
+find the existing PR:
+```bash
+PR_URL=$(gh pr view <polecat-branch> --json url -q '.url')
+```
+
+**Step 1.5 (pr only): VERIFY PR CREATED**
+
+```bash
+gh pr view <polecat-branch> --json url,state -q '.url + " " + .state'
+```
+
+If the PR was not created or is in an unexpected state, debug and retry.
+
 ⚠️ **STOP HERE - DO NOT PROCEED UNTIL STEPS 1.5 AND 2-3 COMPLETE**
 
 **Step 2: Send MERGED Notification (REQUIRED - DO THIS IMMEDIATELY)**
 
-RIGHT NOW, before any cleanup, send MERGED mail to Witness:
+RIGHT NOW, before any cleanup, send MERGED mail to Witness.
 
+**If merge_strategy = "direct":**
 ```bash
 gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
 Issue: <issue-id>
 Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
+
+**If merge_strategy = "pr":**
+```bash
+gt mail send <rig>/witness -s "MERGED <polecat-name>" -m "Branch: <branch>
+Issue: <issue-id>
+PR: ${PR_URL}
+Merged-At: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+Note: In PR mode, "MERGED" means "PR created and ready for review/merge".
+The actual merge happens when the PR is merged on GitHub (by maintainer or CI).
 
 This signals the Witness to nuke the polecat worktree. WITHOUT THIS NOTIFICATION,
 POLECAT WORKTREES ACCUMULATE INDEFINITELY AND THE LIFECYCLE BREAKS.
@@ -577,6 +641,10 @@ bd list --type=merge-request --status=open | grep <polecat-name>
 
 Verify the command output shows all steps succeeded (✓ for each).
 
+**Note**: In PR mode, the source branch is NOT deleted (it's the PR head branch).
+`delete_merged_branches` is ignored when merge_strategy=pr — the branch is cleaned
+up when the PR is merged on GitHub.
+
 **Step 4: Archive the MERGE_READY mail (REQUIRED)**
 ```bash
 gt mail archive <merge-ready-message-id>
@@ -589,7 +657,7 @@ git branch -d temp
 ```
 
 **VERIFICATION GATE**: You CANNOT proceed to loop-check without:
-- [x] MERGED mail sent to witness
+- [x] MERGED mail sent to witness (with PR URL if merge_strategy=pr)
 - [x] Post-merge cleanup completed (MR closed, source issue closed, branch deleted)
 - [x] MERGE_READY mail archived
 
