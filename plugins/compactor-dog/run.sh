@@ -76,11 +76,11 @@ validate_name() {
   return 0
 }
 
-# Validate that a value looks like a Dolt commit hash (hex string).
+# Validate that a value looks like a Dolt commit hash (base32 encoding: a-v plus 0-9).
 validate_hash() {
   local hash="$1"
   local context="$2"
-  if [[ ! "$hash" =~ ^[a-fA-F0-9]+$ ]]; then
+  if [[ ! "$hash" =~ ^[a-v0-9]+$ ]]; then
     log "ERROR: Unsafe $context hash rejected: '$hash'"
     return 1
   fi
